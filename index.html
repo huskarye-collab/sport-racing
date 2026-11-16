@@ -506,4 +506,23 @@ function startGame(){
 
 function updatePolice(dt,now){
  if(!police.length)return;
- policeChasing=d
+ policeChasing=data.stagw>=10?speed>200&&fuel>0:true;
+$("policeStatus").textContent=policeChasing?"🚨 POLICE CHASING":"POLICE PATROL";
+police.forEach((p,i)=>{
+  const targetX=data.stage>=10?(i%2===0?-4:4):player.position.x+(i%2===0?-2:2);
+  p.position.x+=(targetX-p.position.x)*dt*1.2;
+  if(!policeChasing){
+    p.position.z+=(25-p.position.z)*dt*.5;
+  }else{
+    p.position.z-=dt*(speed>300?-1.4:2.2);
+    if(p.position.z>65)p.position.z=30;
+    if(p.position.z<player.position.z+2.5&&Math.abs(p.position.x-player.position.x)<1.8){
+      arrest();
+      return;
+    }
+  }
+  const flashing=Math.floor(now/180)%2===0;
+  if(p.userData.red)p.userData.red.visible=flashing;
+  if(p.userData.blue)p.userData.blue.visible=!flashing;
+ });
+}
