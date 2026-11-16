@@ -526,3 +526,182 @@ police.forEach((p,i)=>{
   if(p.userData.blue)p.userData.blue.visible=!flashing;
  });
 }
+function arrest(){
+ if(!running)return;
+ running=false;
+ speed=0;
+ $("message").textContent="🚨 CAUGHT! TRY AGAIN";
+ $("menu").style.display="flex";
+ showPanel("mainmenu");
+ $("hud").style.display="none";
+ $("controls").style.display="none";
+}
+
+function finishStage(){
+ if(!running)return;
+ running=false;
+ data.stage=Math.min(1000,data.stage+1);
+ data.coins+=400;
+ data.wins++;
+ save();
+ $("message").textContent="STAGE COMPLETE! +400 COINS";
+ $("menu").style.display="flex";
+ showPanel("mainmenu");
+ $("hud").style.display="none";
+ $("controls").style.display="none";
+}
+
+function animate(now){
+ if(!running)return;
+ requestAnimationFrame(animate);
+ const dt=Math.min((now-lastTime)/1000,.05);
+ lastTime=now;
+ if(paused)return;
+
+ if(keys.gas)speed=Math.min(cars[data.selected].speed,speed+90*dt);
+ else speed=Math.max(0,speed-22*dt);
+
+ if(keys.brake)speed=Math.max(0,speed-150*dt);
+
+ if(keys.nitro&&nitro>0){
+  speed=Math.min(cars[data.selected].speed*1.25,speed+180*dt);
+  nitro=Math.max(0,nitro-30*dt);
+ }
+
+ stageSeconds-=dt;
+ if(stageSeconds<=0){finishStage();return;}
+
+ fuelClock+=dt;
+ if(fuelClock>=1){
+  fuelClock=0;
+  fuel=Math.max(0,fuel-speed/18000);
+ }
+
+ if(fuel<=0){
+  speed=Math.max(0,speed-120*dt);
+  $("message").textContent="OUT OF FUEL — VISIT FUEL STATION";
+ }
+
+ if(data.stage>=10&&speed>200&&fuel>0)policeChasing=true;
+
+ spawnTime+=dt;
+ coinTime+=dt;
+
+ if(spawnTime>Math.max(.8,3-speed/500)){
+  spawnTime=0;
+  spawnTraffic();
+ }
+
+ if(coinTime>2.1){
+  coinTime=0;
+  spawnCoin();
+ }
+
+ const travel=speed*dt/12;
+
+ [...traffic,...coinsObjects,...police,...trees,...roadLines].forEach(o=>{
+  if(o.position)o.position.z+=travel;
+ });
+
+ traffic=traffic.filter(o=>{
+  if(o.position.z>18){
+   scene.remove(o);
+   return false;
+  }
+  return true;
+ });
+
+ coinsObjects=coinsObjects.filter(o=>{
+  o.rotation.z+=dt*2;
+
+  if(Math.abs(o.position.z-player.position.z)<2.2&&
+     Math.abs(o.position.x-player.position.x)<1.5){
+   data.coins+=10;
+   save();
+   scene.remove(o);
+   return false;
+  }
+
+  if(o.position.z>18){
+   scene.remove(o);
+   return false;
+  }
+  return true;
+ });
+
+ roadLines.forEach(o=>{
+  if(o.position.z>20)o.position.z-=450;
+ });
+
+ trees.forEach(o=>{
+  if(o.position.z>30)o.position.z-=450;
+ });
+
+ updatePolice(dt,now);
+
+ player.position.x+=(lanes[lane]-player.position.x)*Math.min(1,dt*7);
+ player.rotation.z=(lanes[lane]-player.position.x)*-.035;
+ camera.position.x+=(player.position.x*.35-camera.position.x)*dt*3;
+ camera.lookAt(player.position.x*.3,1,-5);
+
+ $("speed").textContent=Math.round(speed)+" KM/H";
+ updateUI();
+ renderer.render(scene,camera);
+}
+
+function changeLane(direction){
+ lane=Math.max(0,Math.min(2,lane+direction));
+}
+
+$("startBtn").addEventListener("click",startGame);
+$("garageBtn").addEventListener("click",openGarage);
+$("shopBtn").addEventListener("click",openShop);
+$("stationBtn").addEventListener("click",openStation);
+$("garageBack").addEventListener("click",backMenu);
+$("shopBack").addEventListener("click",backMenu);
+$("stationBack").addEventListener("click",backMenu);
+$("resumeBtn").addEventListener("click",resumeAfterFuel);
+
+document.querySelectorAll("[data-gallons]").forEach(btn=>{
+ btn.addEventListener("click",()=>{
+  buyFuel(Number(btn.dataset.gallons),Number(btn.dataset.cost));
+ });
+});
+
+$("left").addEventListener("pointerdown",()=>changeLane(-1));
+$("right").addEventListener("pointerdown",()=>changeLane(1));
+
+function holdButton(id,key){
+ const el=$(id);
+ el.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  keys[key]=true;
+ });
+ ["pointerup","pointercancel","pointerleave"].forEach(ev=>{
+  el.addEventListener(ev,()=>keys[key]=false);
+ });
+}
+
+holdButton("gas","gas");
+holdButton("brake","brake");
+holdButton("nitro","nitro");
+
+addEventListener("keydown",e=>{
+ if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")changeLane(-1);
+ if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")changeLane(1);
+ if(e.key==="ArrowUp"||e.key===" ")keys.gas=true;
+ if(e.key==="ArrowDown")keys.brake=true;
+ if(e.key.toLowerCase()==="n")keys.nitro=true;
+});
+
+addEventListener("keyup",e=>{
+ if(e.key==="ArrowUp"||e.key===" ")keys.gas=false;
+ if(e.key==="ArrowDown")keys.brake=false;
+ if(e.key.toLowerCase()==="n")keys.nitro=false;
+});
+
+updateUI();
+
+</script>
+</body>
+</html>
