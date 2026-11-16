@@ -1,0 +1,618 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sport Racing 3D</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#08111f;color:white;font-family:Arial;overflow:hidden}
+canvas{display:block}
+#hud{position:fixed;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;z-index:2;pointer-events:none}
+.panel{background:#101d32dd;padding:12px;border-radius:12px;border:1px solid #426080}
+#menu{position:fixed;inset:0;z-index:5;background:#07101df0;display:flex;align-items:center;justify-content:center;padding:15px}
+.box{width:min(430px,100%);background:#13223a;padding:22px;border-radius:20px;text-align:center;border:1px solid #426080}
+h1{color:#55c8ff;font-size:32px}
+button{background:#168be9;color:white;border:0;padding:13px 18px;border-radius:10px;font-weight:bold;margin:5px}
+#controls{position:fixed;bottom:15px;left:0;right:0;display:none;justify-content:space-between;padding:10px;z-index:3}
+.control{width:65px;height:65px;font-size:24px;background:#183c61dd;border:2px solid #80bdff;touch-action:none}
+#message{position:fixed;top:30%;width:100%;text-align:center;font-size:25px;z-index:4;pointer-events:none}
+#garage{display:none}
+.item{background:#203652;padding:10px;margin:8px;border-radius:10px;display:flex;justify-content:space-between;align-items:center}
+</style>
+</head>
+<body>
+
+<div id="hud">
+ <div class="panel">
+  STAGE: <b id="stage">1</b><br>
+  COINS: <b id="coins">0</b><br>
+  <span id="policeStatus">POLICE: NONE</span>
+ </div>
+ <div class="panel">
+  <b id="speed">0 KM/H</b><br>
+  DISTANCE: <b id="distance">0</b> m
+ </div>
+</div>
+
+<div id="message"></div>
+
+<div id="menu">
+ <div class="box" id="mainmenu">
+  <h1>SPORT RACING</h1>
+  <p>THE ULTIMATE 3D RACING GAME</p>
+  <h2 id="welcome">Ready to race?</h2>
+  <p>Stage: <b id="menustage">1</b></p>
+  <p>Coins: <b id="mencoins">0</b></p>
+  <button onclick="startGame()">START RACING</button>
+  <button onclick="openGarage()">GARAGE</button>
+ </div>
+ <div class="box" id="garage">
+  <h2>🏎️ GARAGE</h2>
+  <div id="carlist"></div>
+  <button onclick="closeGarage()">BACK</button>
+ </div>
+</div>
+
+<div id="controls">
+ <div>
+  <button class="control" id="left">◀</button>
+  <button class="control" id="right">▶</button>
+ </div>
+ <div>
+  <button class="control" id="brake">▼</button>
+  <button class="control" id="nitro">⚡</button>
+ </div>
+</div>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const $=id=>document.getElementById(id);
+
+const cars=[
+{name:"Street Racer",color:0x168cff,price:0},
+{name:"Velocity GT",color:0xff3333,price:100000000},
+{name:"Neon Beast",color:0x9b50ff,price:150000000},
+{name:"Golden Storm",color:0xffc928,price:200000000},
+{name:"Shadow X",color:0x222b39,price:250000000},
+{name:"Emerald Pro",color:0x16d69a,price:300000000}
+];
+
+let save={
+ stage:1,coins:0,wins:0,selected:0,
+ unlocked:[true,false,false,false,false,false]
+};
+
+try{
+ const old=JSON.parse(localStorage.getItem("sportRacingSave"));
+ if(old)save={...save,...old};
+}catch(e){}
+
+function saveGame(){
+ localStorage.setItem("sportRacingSave",JSON.stringify(save));
+ updateUI();
+}
+
+function updateUI(){
+ $("stage").textContent=save.stage.toLocaleString();
+ $("coins").textContent=save.coins.toLocaleString();
+ $("menustage").textContent=save.stage.toLocaleString();
+ $("mencoins").textContent=save.coins.toLocaleString();
+}
+
+let scene,camera,renderer,player;
+let traffic=[],coinsObjects=[],lines=[],trees=[],police=[];
+let running=false,distance=0,speed=0,lane=1;
+let lastTime=0,spawnTime=0,coinTime=0;
+let nitro=100;
+
+const lanes=[-3.2,0,3.2];
+const keys={brake:false,nitro:false};
+
+function createCar(color,isPolice=false){
+ const g=new THREE.Group();
+
+ const body=new THREE.Mesh(
+  new THREE.BoxGeometry(1.8,.65,3.5),
+  new THREE.MeshStandardMaterial({
+   color,metalness:.6,roughness:.3
+  })
+ );
+ body.position.y=.65;
+ g.add(body);
+
+ const cabin=new THREE.Mesh(
+  new THREE.BoxGeometry(1.35,.7,1.7),
+  new THREE.MeshStandardMaterial({color:0x152b43})
+ );
+ cabin.position.set(0,1.25,-.2);
+ g.add(cabin);
+
+ const glass=new THREE.Mesh(
+  new THREE.BoxGeometry(1.2,.45,1.3),
+  new THREE.MeshStandardMaterial({
+   color:0x70caff,metalness:.4
+  })
+ );
+ glass.position.set(0,1.3,-.2);
+ g.add(glass);
+
+ for(const x of [-.95,.95]){
+  for(const z of [-1.1,1.1]){
+   const w=new THREE.Mesh(
+    new THREE.CylinderGeometry(.38,.38,.22,16),
+    new THREE.MeshStandardMaterial({color:0x111111})
+   );
+   w.rotation.z=Math.PI/2;
+   w.position.set(x,.4,z);
+   g.add(w);
+  }
+ }
+
+ if(isPolice){
+  const bar=new THREE.Group();
+
+  const red=new THREE.Mesh(
+   new THREE.BoxGeometry(.45,.18,.25),
+   new THREE.MeshBasicMaterial({color:0xff0000})
+  );
+
+  const blue=new THREE.Mesh(
+   new THREE.BoxGeometry(.45,.18,.25),
+   new THREE.MeshBasicMaterial({color:0x0088ff})
+  );
+
+  red.position.x=-.27;
+  blue.position.x=.27;
+
+  bar.add(red,blue);
+  bar.position.set(0,1.75,-.2);
+  g.add(bar);
+
+  g.userData.bar=bar;
+
+  const stripe=new THREE.Mesh(
+   new THREE.BoxGeometry(1.82,.13,2.5),
+   new THREE.MeshBasicMaterial({color:0x101827})
+  );
+  stripe.position.y=.85;
+  g.add(stripe);
+ }
+
+ return g;
+}
+
+function init(){
+ scene=new THREE.Scene();
+ scene.background=new THREE.Color(0x91c9f0);
+ scene.fog=new THREE.Fog(0x91c9f0,40,170);
+
+ camera=new THREE.PerspectiveCamera(
+  65,innerWidth/innerHeight,.1,300
+ );
+
+ renderer=new THREE.WebGLRenderer({antialias:true});
+ renderer.setSize(innerWidth,innerHeight);
+ renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+ document.body.prepend(renderer.domElement);
+
+ scene.add(new THREE.HemisphereLight(0xffffff,0x536b48,2));
+
+ const sun=new THREE.DirectionalLight(0xffffff,2);
+ sun.position.set(-15,25,10);
+ scene.add(sun);
+
+ const ground=new THREE.Mesh(
+  new THREE.PlaneGeometry(400,400),
+  new THREE.MeshStandardMaterial({color:0x387b43})
+ );
+ ground.rotation.x=-Math.PI/2;
+ ground.position.y=-.15;
+ scene.add(ground);
+
+ const road=new THREE.Mesh(
+  new THREE.BoxGeometry(11,.15,400),
+  new THREE.MeshStandardMaterial({color:0x292e35})
+ );
+ road.position.set(0,0,-150);
+ scene.add(road);
+
+ for(const x of [-5.2,5.2]){
+  const edge=new THREE.Mesh(
+   new THREE.BoxGeometry(.13,.04,400),
+   new THREE.MeshBasicMaterial({color:0xffffff})
+  );
+  edge.position.set(x,.1,-150);
+  scene.add(edge);
+ }
+
+ for(const x of [-1.6,1.6]){
+  for(let i=0;i<35;i++){
+   const line=new THREE.Mesh(
+    new THREE.BoxGeometry(.08,.025,3),
+    new THREE.MeshBasicMaterial({color:0xffffff})
+   );
+   line.position.set(x,.1,-i*10);
+   scene.add(line);
+   lines.push(line);
+  }
+ }
+
+ for(let i=0;i<40;i++){
+  addTree(-9,-i*10);
+  addTree(9,-i*10);
+ }
+
+ player=createCar(cars[save.selected].color);
+ player.position.set(0,0,4);
+ scene.add(player);
+
+ camera.position.set(0,5,12);
+ camera.lookAt(0,1,-5);
+
+ addEventListener("resize",()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+ });
+}
+
+function addTree(x,z){
+ const g=new THREE.Group();
+
+ const trunk=new THREE.Mesh(
+  new THREE.CylinderGeometry(.18,.25,2,8),
+  new THREE.MeshStandardMaterial({color:0x70452a})
+ );
+ trunk.position.y=1;
+ g.add(trunk);
+
+ const top=new THREE.Mesh(
+  new THREE.ConeGeometry(1.2,3,8),
+  new THREE.MeshStandardMaterial({color:0x176b38})
+ );
+ top.position.y=3;
+ g.add(top);
+
+ g.position.set(x,0,z);
+ scene.add(g);
+ trees.push(g);
+}
+
+function policeCount(stage){
+ if(stage===1||stage===5)return 0;
+ if(stage===2||stage===3)return 2;
+ if(stage===4||stage===6)return 4;
+ if(stage===8)return 8;
+ if(stage%2===0)return Math.min(12,stage);
+ return 0;
+}
+
+function syncPolice(){
+ const count=policeCount(save.stage);
+
+ while(police.length<count){
+  const p=createCar(0xffffff,true);
+  p.position.set(lanes[police.length%3],0,12+police.length*3);
+  scene.add(p);
+  police.push(p);
+ }
+
+ while(police.length>count){
+  scene.remove(police.pop());
+ }
+
+ $("policeStatus").textContent=
+ count ? "POLICE CHASE: "+count : "POLICE: NONE";
+}
+
+function updatePolice(dt,now){
+ police.forEach((p,i)=>{
+  const target=player.position.x+(i%2===0?-1.8:1.8);
+
+  p.position.x+=(target-p.position.x)*dt*.8;
+  p.position.z+=(player.position.z+8+(i%4)*2-p.position.z)*dt*.8;
+
+  const flash=Math.floor(now/180)%2===0;
+  p.userData.bar.children[0].visible=flash;
+  p.userData.bar.children[1].visible=!flash;
+ });
+}
+
+function clearObjects(){
+ for(const o of [...traffic,...coinsObjects,...police]){
+  scene.remove(o);
+ }
+ traffic=[];
+ coinsObjects=[];
+ police=[];
+}
+
+function spawnTraffic(){
+ const idx=Math.floor(Math.random()*3);
+ const c=createCar(
+  [0xffa22a,0xeeeeee,0x9b50ff,0x222222]
+  [Math.floor(Math.random()*4)]
+ );
+ c.position.set(lanes[idx],0,-110);
+ scene.add(c);
+ traffic.push(c);
+}
+
+function spawnCoin(){
+ const c=new THREE.Mesh(
+  new THREE.TorusGeometry(.48,.13,10,20),
+  new THREE.MeshStandardMaterial({
+   color:0xffd52a,metalness:.8,
+   emissive:0x684500
+  })
+ );
+ c.position.set(lanes[Math.floor(Math.random()*3)],1.3,-110);
+ c.rotation.x=Math.PI/2;
+ scene.add(c);
+ coinsObjects.push(c);
+}
+
+function startGame(){
+ $("menu").style.display="none";
+ $("controls").style.display="flex";
+ $("message").textContent="";
+
+ clearObjects();
+ distance=0;
+ speed=0;
+ lane=1;
+ nitro=100;
+ spawnTime=0;
+ coinTime=0;
+
+ player.position.set(0,0,4);
+ player.rotation.set(0,0,0);
+
+ syncPolice();
+
+ running=true;
+ lastTime=performance.now();
+ requestAnimationFrame(animate);
+}
+
+function returnMenu(text){
+ running=false;
+ $("controls").style.display="none";
+ $("menu").style.display="flex";
+ $("mainmenu").style.display="block";
+ $("garage").style.display="none";
+ $("welcome").textContent=text;
+ saveGame();
+}
+
+function finishStage(){
+ if(save.stage>=1000000){
+  completeGame();
+  return;
+ }
+
+ save.stage++;
+ save.coins+=1000;
+ saveGame();
+ syncPolice();
+ returnMenu("🏆 STAGE COMPLETED!");
+}
+
+function completeGame(){
+ save.wins++;
+
+ if(save.wins===1){
+  save.coins+=1000000000;
+  save.unlocked[1]=true;
+  save.unlocked[2]=true;
+  save.unlocked[3]=true;
+  save.stage=1;
+  returnMenu("🏆 FIRST VICTORY! +1 BILLION COINS");
+ }else{
+  save.unlocked=cars.map(()=>true);
+  save.stage=1;
+  returnMenu("👑 SECOND VICTORY! ALL CARS UNLOCKED!");
+ }
+}
+
+function crash(){
+ returnMenu("💥 RACE OVER! TRY AGAIN");
+}
+
+function animate(now){
+ if(!running)return;
+
+ requestAnimationFrame(animate);
+
+ const dt=Math.min((now-lastTime)/1000,.04);
+ lastTime=now;
+
+ const boosting=keys.nitro&&nitro>0;
+
+ if(boosting)nitro=Math.max(0,nitro-30*dt);
+ else nitro=Math.min(100,nitro+9*dt);
+
+ const targetSpeed=keys.brake?20:boosting?190:125;
+ speed+=(targetSpeed-speed)*dt*1.8;
+
+ const movement=speed*dt*.12;
+ distance+=movement*10;
+
+ player.position.x+=(lanes[lane]-player.position.x)*dt*7;
+ player.rotation.z+=(player.position.x-lanes[lane])*.04-player.rotation.z*dt*5;
+
+ camera.position.x+=(player.position.x*.38-camera.position.x)*dt*3;
+ camera.position.y+=(5.3-camera.position.y)*dt*2;
+ camera.position.z+=(12-camera.position.z)*dt*2;
+ camera.lookAt(player.position.x*.4,1,-5);
+
+ for(const l of lines){
+  l.position.z+=movement;
+  if(l.position.z>12)l.position.z-=350;
+ }
+
+ for(const t of trees){
+  t.position.z+=movement;
+  if(t.position.z>15)t.position.z-=400;
+ }
+
+ spawnTime+=dt;
+ coinTime+=dt;
+
+ if(spawnTime>1.15){
+  spawnTraffic();
+  spawnTime=0;
+ }
+
+ if(coinTime>1.5){
+  spawnCoin();
+  coinTime=0;
+ }
+
+ for(let i=traffic.length-1;i>=0;i--){
+  const c=traffic[i];
+  c.position.z+=movement*1.15;
+
+  if(c.position.z>12){
+   scene.remove(c);
+   traffic.splice(i,1);
+   continue;
+  }
+
+  if(Math.abs(c.position.x-player.position.x)<1.45&&
+     Math.abs(c.position.z-player.position.z)<2.5){
+   crash();
+   return;
+  }
+ }
+
+ for(let i=coinsObjects.length-1;i>=0;i--){
+  const c=coinsObjects[i];
+  c.position.z+=movement*1.15;
+  c.rotation.z+=dt*3;
+
+  if(c.position.z>12){
+   scene.remove(c);
+   coinsObjects.splice(i,1);
+   continue;
+  }
+
+  if(Math.abs(c.position.x-player.position.x)<1.4&&
+     Math.abs(c.position.z-player.position.z)<2){
+   save.coins+=100;
+   scene.remove(c);
+   coinsObjects.splice(i,1);
+   saveGame();
+  }
+ }
+
+ updatePolice(dt,now);
+
+ $("speed").textContent=Math.round(speed)+" KM/H";
+ $("distance").textContent=Math.floor(distance).toLocaleString();
+
+ if(distance>=1200){
+  finishStage();
+  return;
+ }
+
+ renderer.render(scene,camera);
+}
+
+function moveLane(d){
+ if(running)lane=Math.max(0,Math.min(2,lane+d));
+}
+
+$("left").addEventListener("pointerdown",e=>{
+ e.preventDefault();moveLane(-1);
+});
+$("right").addEventListener("pointerdown",e=>{
+ e.preventDefault();moveLane(1);
+});
+
+function hold(id,key){
+ const el=$(id);
+ el.addEventListener("pointerdown",e=>{
+  e.preventDefault();keys[key]=true;
+ });
+ ["pointerup","pointerleave","pointercancel"].forEach(ev=>{
+  el.addEventListener(ev,()=>keys[key]=false);
+ });
+}
+hold("brake","brake");
+hold("nitro","nitro");
+
+addEventListener("keydown",e=>{
+ if(e.key==="ArrowLeft"||e.key==="a")moveLane(-1);
+ if(e.key==="ArrowRight"||e.key==="d")moveLane(1);
+ if(e.key==="ArrowDown")keys.brake=true;
+ if(e.key===" "||e.key==="Shift")keys.nitro=true;
+});
+
+addEventListener("keyup",e=>{
+ if(e.key==="ArrowDown")keys.brake=false;
+ if(e.key===" "||e.key==="Shift")keys.nitro=false;
+});
+
+window.openGarage=function(){
+ $("mainmenu").style.display="none";
+ $("garage").style.display="block";
+ renderGarage();
+};
+
+window.closeGarage=function(){
+ $("garage").style.display="none";
+ $("mainmenu").style.display="block";
+};
+
+function renderGarage(){
+ $("carlist").innerHTML="";
+
+ cars.forEach((car,i)=>{
+  const unlocked=!!save.unlocked[i];
+  const selected=save.selected===i;
+
+  const item=document.createElement("div");
+  item.className="item";
+
+  const info=document.createElement("span");
+  info.innerHTML="<b>"+car.name+"</b><br>"+
+   (unlocked?"Unlocked":car.price.toLocaleString()+" coins");
+
+  const btn=document.createElement("button");
+  btn.textContent=selected?"SELECTED":unlocked?"SELECT":"BUY";
+  btn.disabled=selected;
+
+  btn.onclick=()=>{
+   if(unlocked){
+    save.selected=i;
+    saveGame();
+    renderGarage();
+   }else if(save.coins>=car.price){
+    save.coins-=car.price;
+    save.unlocked[i]=true;
+    save.selected=i;
+    saveGame();
+    renderGarage();
+   }else{
+    btn.textContent="NOT ENOUGH";
+   }
+  };
+
+  item.append(info,btn);
+  $("carlist").append(item);
+ });
+}
+
+init();
+updateUI();
+syncPolice();
+
+addEventListener("pagehide",saveGame);
+</script>
+</body>
+</html>
