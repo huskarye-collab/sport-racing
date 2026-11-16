@@ -488,4 +488,174 @@ function animate(now){
   if(Math.abs(c.position.x-player.position.x)<1.5&&Math.abs(c.position.z-player.position.z)<2.4){arrest();return;}
  }
  for(let i=coinsObjects.length-1;i>=0;i--){
-  const c=coinsObj
+  
+  const c=coinsObjects[i];
+  c.position.z+=movement;
+  c.rotation.z+=dt*2;
+
+  if(c.position.z>14){
+   scene.remove(c);
+   coinsObjects.splice(i,1);
+   continue;
+  }
+
+  if(Math.abs(c.position.x-player.position.x)<1.5 &&
+     Math.abs(c.position.z-player.position.z)<2.4){
+   data.coins+=10;
+   save();
+   scene.remove(c);
+   coinsObjects.splice(i,1);
+  }
+ }
+
+ updatePolice(dt,now);
+
+ $("speed").textContent=Math.round(speed)+" KM/H";
+ $("fuel").textContent=fuel.toFixed(1);
+ $("fuelinside").style.width=Math.max(0,Math.min(100,fuel/10*100))+"%";
+ $("timer").textContent=formatTime(stageSeconds);
+
+ if(player){
+  player.position.y=Math.max(0,player.position.y);
+ }
+
+ if(renderer&&scene&&camera){
+  renderer.render(scene,camera);
+ }
+}
+
+/* STAGE COMPLETION */
+function finishStage(){
+ running=false;
+ const completed=data.stage;
+ data.coins+=400;
+ data.wins++;
+
+ if(completed<1000){
+  data.stage++;
+  data.unlocked[0]=true;
+  $("message").textContent="🏆 STAGE COMPLETE! +400 COINS";
+ }else{
+  $("message").textContent="🏆 YOU COMPLETED SPORT RACING 3D!";
+ }
+
+ save();
+ $("controls").style.display="none";
+
+ setTimeout(()=>{
+  backMenu();
+  if(completed>=1000){
+   $("message").textContent="🌟 LEGENDARY DRIVER — GAME COMPLETED!";
+  }
+ },2200);
+}
+
+/* POLICE ARREST */
+function arrest(){
+ if(!running)return;
+
+ running=false;
+ data.coins=Math.max(0,data.coins-1000);
+ save();
+
+ $("message").textContent="🚨 CAUGHT! -1,000 COINS";
+ $("controls").style.display="none";
+
+ setTimeout(()=>{
+  backMenu();
+ },2200);
+}
+
+/* FUEL STOP */
+function pauseToStation(){
+ running=false;
+ paused=true;
+ speed=0;
+
+ $("controls").style.display="none";
+ $("menu").style.display="flex";
+
+ showPanel("station");
+ $("stationFuel").textContent=fuel.toFixed(1);
+ $("fuelNotice").textContent="Your car stopped. Buy fuel to continue!";
+ updateUI();
+}
+
+/* MENU BUTTONS */
+$("startBtn").addEventListener("click",startGame);
+$("garageBtn").addEventListener("click",openGarage);
+$("shopBtn").addEventListener("click",openShop);
+$("stationBtn").addEventListener("click",openStation);
+
+$("garageBack").addEventListener("click",backMenu);
+$("shopBack").addEventListener("click",backMenu);
+$("stationBack").addEventListener("click",backMenu);
+$("resumeBtn").addEventListener("click",resumeAfterFuel);
+
+/* FUEL PURCHASE BUTTONS */
+document.querySelectorAll("[data-gallons]").forEach(button=>{
+ button.addEventListener("click",()=>{
+  buyFuel(
+   Number(button.dataset.gallons),
+   Number(button.dataset.cost)
+  );
+ });
+});
+
+/* DRIVING CONTROLS */
+function holdButton(id,key){
+ const button=$(id);
+
+ button.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  keys[key]=true;
+  button.setPointerCapture(e.pointerId);
+ });
+
+ const release=()=>{
+  keys[key]=false;
+ };
+
+ button.addEventListener("pointerup",release);
+ button.addEventListener("pointercancel",release);
+ button.addEventListener("lostpointercapture",release);
+}
+
+holdButton("gas","gas");
+holdButton("brake","brake");
+holdButton("nitro","nitro");
+
+$("left").addEventListener("pointerdown",e=>{
+ e.preventDefault();
+ lane=Math.max(0,lane-1);
+});
+
+$("right").addEventListener("pointerdown",e=>{
+ e.preventDefault();
+ lane=Math.min(2,lane+1);
+});
+
+/* KEYBOARD SUPPORT */
+addEventListener("keydown",e=>{
+ if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a"){
+  lane=Math.max(0,lane-1);
+ }
+ if(e.key==="ArrowRight"||e.key.toLowerCase()==="d"){
+  lane=Math.min(2,lane+1);
+ }
+ if(e.key==="ArrowUp"||e.key.toLowerCase()==="w")keys.gas=true;
+ if(e.key==="ArrowDown"||e.key.toLowerCase()==="s")keys.brake=true;
+ if(e.key==="Shift")keys.nitro=true;
+});
+
+addEventListener("keyup",e=>{
+ if(e.key==="ArrowUp"||e.key.toLowerCase()==="w")keys.gas=false;
+ if(e.key==="ArrowDown"||e.key.toLowerCase()==="s")keys.brake=false;
+ if(e.key==="Shift")keys.nitro=false;
+});
+
+/* INITIAL DISPLAY */
+updateUI();
+</script>
+</body>
+</html>
