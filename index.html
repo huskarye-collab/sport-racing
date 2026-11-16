@@ -506,7 +506,7 @@ function startGame(){
 
 function updatePolice(dt,now){
  if(!police.length)return;
- policeChasing=data.stagw>=10?speed>200&&fuel>0:true;
+ policeChasing=data.stage>=10?speed>200&&fuel>0:true;
 $("policeStatus").textContent=policeChasing?"🚨 POLICE CHASING":"POLICE PATROL";
 police.forEach((p,i)=>{
   const targetX=data.stage>=10?(i%2===0?-4:4):player.position.x+(i%2===0?-2:2);
